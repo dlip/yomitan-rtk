@@ -26,6 +26,21 @@ ZIP. It appears as `KANJIDIC + RTK`. Disable the original KANJIDIC dictionary if
 you only want the combined version displayed. Rebuild and reimport to update it;
 automatic upstream updates are disabled for this customized dictionary.
 
+## Releases
+
+Push a new tag to run the release workflow:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow runs the tests, builds the dictionary using the tagged CSV and the
+latest upstream KANJIDIC, and publishes a GitHub release with
+`KANJIDIC_RTK_english.zip` attached and automatically generated release notes.
+All tag names are supported. The workflow uses the built-in `GITHUB_TOKEN`;
+no additional secrets are required. The tagged commit must contain the workflow.
+
 ## Merge behavior
 
 The input is UTF-8 CSV without a header: `number,kanji,keyword,story`. Quoted
