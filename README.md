@@ -1,13 +1,13 @@
-# RTK
+# Yomitan RTK
 
 A standalone kanji dictionary with RTK keywords, numbers, and mnemonic stories
-from `rtk.csv`, for Yomitan and Manatan. No custom CSS or KANJIDIC download is needed.
+from `rtk.csv`, for Yomitan. No custom CSS or downloads are needed to build.
 
 ## Use
 
 1. Download `RTK.zip` from this repository's Releases page, or build it below.
-2. Import it alongside regular KANJIDIC.
-3. Move **RTK above KANJIDIC** in the dictionary order.
+2. Import it into Yomitan.
+3. Move **RTK above your other kanji dictionaries** if you want its results first.
 
 The dictionary is named `RTK`. Each entry contains a keyword and number followed
 by its story. For example, 明 contains:
@@ -17,10 +17,7 @@ bright (#20)
 The sun makes the moon bright.
 ```
 
-RTK and KANJIDIC appear as separate results using each app's normal formatting.
-If switching from `KANJIDIC + RTK`, disable or remove that combined dictionary
-and enable regular KANJIDIC to avoid duplicate RTK results. Remove any RTK-specific
-snippet previously pasted into Yomitan's Popup CSS.
+Entries use Yomitan's normal formatting. No extra RTK tags or custom CSS are needed.
 
 ## Build
 
@@ -66,34 +63,6 @@ Blank fields produce no empty labels. Duplicate rows combine complementary
 fields; conflicting records are preserved as separate definitions for the same
 kanji. Original mnemonic text and internal line breaks are preserved.
 
-## Legacy combined dictionary
-
-The original KANJIDIC + RTK builder remains available for Yomitan:
-
-```sh
-python3 build_combined.py
-```
-
-It downloads the latest [KANJIDIC English dictionary](https://github.com/yomidevs/jmdict-yomitan)
-and writes `dist/KANJIDIC_RTK_english.zip`. Use `--source-zip` to build from a local
-KANJIDIC archive offline. This combined dictionary is no longer included in new
-releases.
-
-<details>
-<summary>Combined dictionary screenshot and styling</summary>
-
-![RTK section in Yomitan showing 大, its keyword, number, and story](docs/rtk-preview.png)
-
-The combined ZIP bundles [yomitan-rtk.css](yomitan-rtk.css) as `styles.css` to show
-RTK above the original meanings, readings, and statistics in Yomitan. It preserves
-upstream entries and attribution and disables upstream automatic updates.
-
-Manatan's kanji renderer shows the metadata tags and text fallback instead;
-use the standalone `RTK.zip` there. The screenshot above shows the combined
-Yomitan version, not the standalone dictionary.
-
-</details>
-
 ## Tests
 
 ```sh
@@ -108,8 +77,3 @@ The standalone dictionary uses only `rtk.csv`. Its provenance and redistribution
 terms, including those of the mnemonic stories, are unspecified. This project
 does not assign new license terms to that data. The code license is in
 [LICENSE](LICENSE).
-
-The legacy combined dictionary also uses KANJIDIC material from
-[yomidevs/jmdict-yomitan](https://github.com/yomidevs/jmdict-yomitan) and retains its
-attribution. Consult [KANJIDIC](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project)
-for the dictionary data's license terms.
