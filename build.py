@@ -62,6 +62,29 @@ def rtk_meanings(records):
     return list(dict.fromkeys(meanings))
 
 
+def rtk_tags(kanji, records):
+    tags = []
+    for index, (number, keyword, story) in enumerate(records):
+        for offset, (field, value) in enumerate(
+            (
+                ("keyword", keyword),
+                ("number", f"#{number}" if number else ""),
+                ("story", story),
+            )
+        ):
+            if value:
+                tags.append(
+                    [
+                        f"RTK-{kanji}-{index + 1}-{field}",
+                        f"rtk-{field}",
+                        1000 + index * 3 + offset,
+                        value,
+                        0,
+                    ]
+                )
+    return tags
+
+
 def validate_entry(entry, bank):
     if (
         not isinstance(entry, list)
@@ -78,6 +101,8 @@ def validate_entry(entry, bank):
 
 def enrich_archive(source, csv_data):
     records = read_rtk(csv_data)
+    styles = (ROOT / "yomitan-rtk.css").read_bytes()
+    content_hash = hashlib.sha256(csv_data + b"\0" + styles).hexdigest()[:12]
     result = io.BytesIO()
     seen = set()
     entry_count = enriched_count = 0
@@ -94,16 +119,17 @@ def enrich_archive(source, csv_data):
         if not isinstance(revision, str) or not revision:
             raise ValueError("Dictionary index is missing a revision")
         index["title"] = "KANJIDIC + RTK"
-        index["revision"] = (
-            f"{revision}-rtk-{hashlib.sha256(csv_data).hexdigest()[:12]}"
-        )
+        index["revision"] = f"{revision}-rtk3-{content_hash}"
         index.pop("isUpdatable", None)
         index.pop("indexUrl", None)
         index.pop("downloadUrl", None)
         bank_count = 0
+        tags = []
         with zipfile.ZipFile(result, "w") as output:
             output.comment = original.comment
             for info in original.infolist():
+                if info.filename == "styles.css":
+                    continue
                 data = original.read(info)
                 if info.filename == "index.json":
                     data = json.dumps(index, ensure_ascii=False).encode("utf-8")
@@ -119,10 +145,39 @@ def enrich_archive(source, csv_data):
                         entry_count += 1
                         additions = rtk_meanings(records.get(kanji, []))
                         if additions:
-                            entry[4] = additions + entry[4]
+                            entry_tags = rtk_tags(kanji, records[kanji])
+                            tags.extend(entry_tags)
+                            entry[3] = " ".join(
+                                filter(
+                                    None, [entry[3], *(tag[0] for tag in entry_tags)]
+                                )
+                            )
+                            entry[4] = ["\n".join(additions)] + entry[4]
                             enriched_count += 1
                     data = json.dumps(entries, ensure_ascii=False).encode("utf-8")
                 output.writestr(info, data)
+            if tags:
+                tag_numbers = [
+                    int(match[1])
+                    for name in names
+                    if (match := re.fullmatch(r"tag_bank_([0-9]+)\.json", name))
+                ]
+                output.writestr(
+                    f"tag_bank_{max(tag_numbers, default=0) + 1}.json",
+                    json.dumps(
+                        list({tag[0]: tag for tag in tags}.values()), ensure_ascii=False
+                    ),
+                    compress_type=zipfile.ZIP_DEFLATED,
+                )
+            upstream_styles = (
+                original.read("styles.css") if "styles.css" in names else b""
+            )
+            if tags or upstream_styles:
+                output.writestr(
+                    "styles.css",
+                    upstream_styles + b"\n" + styles if tags else upstream_styles,
+                    compress_type=zipfile.ZIP_DEFLATED,
+                )
         if not bank_count or not entry_count:
             raise ValueError("Source ZIP contains no kanji entries")
     return result.getvalue(), {

@@ -91,14 +91,32 @@ class ArchiveTests(unittest.TestCase):
             zipfile.ZipFile(io.BytesIO(result)) as output,
         ):
             self.assertIsNone(output.testzip())
-            self.assertEqual(output.namelist(), original.namelist())
+            self.assertEqual(
+                output.namelist(),
+                original.namelist() + ["tag_bank_2.json", "styles.css"],
+            )
+            self.assertEqual(
+                output.read("styles.css").strip(),
+                (build.ROOT / "yomitan-rtk.css").read_bytes().strip(),
+            )
             self.assertEqual(output.comment, original.comment)
             for name in ("tag_bank_1.json", "assets/source.txt", "kanji_bank_2.json"):
                 self.assertEqual(output.read(name), original.read(name))
             before = json.loads(original.read("kanji_bank_1.json"))
             after = json.loads(output.read("kanji_bank_1.json"))
-            self.assertEqual(after[0][4], ["RTK #1: one", "RTK story: story", "one"])
-            self.assertEqual(after[0][:4], before[0][:4])
+            self.assertEqual(after[0][4], ["RTK #1: one\nRTK story: story", "one"])
+            self.assertEqual(after[0][:3], before[0][:3])
+            self.assertEqual(after[0][3].split()[0], "jouyou")
+            tags = json.loads(output.read("tag_bank_2.json"))
+            self.assertEqual(after[0][3].split()[1:], [tag[0] for tag in tags])
+            self.assertEqual(
+                [tag[1:4] for tag in tags],
+                [
+                    ["rtk-keyword", 1000, "one"],
+                    ["rtk-number", 1001, "#1"],
+                    ["rtk-story", 1002, "story"],
+                ],
+            )
             self.assertEqual(after[0][5], before[0][5])
             self.assertEqual(after[1], before[1])
             index = json.loads(output.read("index.json"))
@@ -107,7 +125,70 @@ class ArchiveTests(unittest.TestCase):
             self.assertNotIn("isUpdatable", index)
             self.assertNotIn("indexUrl", index)
             self.assertNotIn("downloadUrl", index)
-            self.assertTrue(index["revision"].startswith("source-1-rtk-"))
+            self.assertTrue(index["revision"].startswith("source-1-rtk3-"))
+
+    def test_bundled_styles_preserve_upstream_css(self):
+        stream = io.BytesIO(fixture_archive())
+        with zipfile.ZipFile(stream, "a") as source:
+            source.writestr("styles.css", "a { color: red; }")
+        result, _ = build.enrich_archive(stream.getvalue(), "1,一,one,story\n".encode())
+        with zipfile.ZipFile(io.BytesIO(result)) as output:
+            self.assertEqual(output.namelist().count("styles.css"), 1)
+            self.assertTrue(
+                output.read("styles.css").startswith(b"a { color: red; }\n")
+            )
+            self.assertIn(b'&[data-type="kanji"]', output.read("styles.css"))
+
+    def test_revision_tracks_stylesheet_changes(self):
+        data = "1,一,one,story\n".encode()
+        source = fixture_archive()
+        first, _ = build.enrich_archive(source, data)
+        with patch.object(
+            Path, "read_bytes", return_value=b'&[data-type="kanji"] { color: red; }'
+        ):
+            changed, _ = build.enrich_archive(source, data)
+        with (
+            zipfile.ZipFile(io.BytesIO(first)) as a,
+            zipfile.ZipFile(io.BytesIO(changed)) as b,
+        ):
+            self.assertNotEqual(
+                json.loads(a.read("index.json"))["revision"],
+                json.loads(b.read("index.json"))["revision"],
+            )
+
+    def test_no_metadata_means_no_layout_tags_or_extra_bank(self):
+        source = fixture_archive()
+        result, stats = build.enrich_archive(source, ",一,,\n".encode())
+        self.assertEqual(stats["enriched"], 0)
+        with (
+            zipfile.ZipFile(io.BytesIO(source)) as original,
+            zipfile.ZipFile(io.BytesIO(result)) as output,
+        ):
+            self.assertEqual(original.namelist(), output.namelist())
+            self.assertEqual(
+                json.loads(original.read("kanji_bank_1.json")),
+                json.loads(output.read("kanji_bank_1.json")),
+            )
+
+    def test_conflicting_records_have_separate_ordered_tags(self):
+        tags = build.rtk_tags(
+            "一", [("1", "one", "first story"), ("2", "single", "second story")]
+        )
+        self.assertEqual(len({tag[0] for tag in tags}), 6)
+        self.assertEqual([tag[2] for tag in tags], list(range(1000, 1006)))
+        self.assertEqual(
+            [tag[3] for tag in tags],
+            ["one", "#1", "first story", "single", "#2", "second story"],
+        )
+
+    def test_missing_fields_do_not_create_empty_tags(self):
+        tags = build.rtk_tags(
+            "一", [("", "", "story only"), ("1", "", ""), ("", "keyword only", "")]
+        )
+        self.assertEqual(
+            [tag[1] for tag in tags], ["rtk-story", "rtk-number", "rtk-keyword"]
+        )
+        self.assertTrue(all(tag[3] for tag in tags))
 
     def test_revision_tracks_csv_changes_and_build_is_repeatable(self):
         source = fixture_archive()
